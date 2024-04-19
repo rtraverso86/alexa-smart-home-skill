@@ -1,0 +1,21 @@
+[package]
+name = "alexa-smart-home-skill"
+version = "0.1.0"
+edition = "2021"
+authors = ["R. Traverso"]
+description = """
+An AWS Lambda function that provides the same functionalities as the original python script
+described into the Home Assistant guide to Alexa integration.
+"""
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#clap = { version = "4.5", features = ["derive"] }
+lambda_runtime = { version = "0.11" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+tokio = { version = "1" }
+#tracing = { version = "0.1", features = [ "log" ] }
+#tracing-subscriber = { version = "0.3" }
