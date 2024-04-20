@@ -21,9 +21,11 @@ struct PayloadData {
     message: String,
 }
 
-async fn handler(event: LambdaEvent<Value>) -> Result<String, String> {
+async fn handler(event: LambdaEvent<Value>) -> Result<Value, String> {
     if tracing::enabled!(Level::DEBUG) {
-        let evt = serde_json::to_string_pretty(&event.payload).or(Err("Could not serialize event.payload"))?;
+        if tracing::enabled!(Level::TRACE) {
+            let evt = serde_json::to_string_pretty(&event.payload).or(Err("Could not serialize event.payload"))?;
+        }
         tracing::debug!("Event: {}", evt);
     }
 
@@ -35,9 +37,9 @@ async fn handler(event: LambdaEvent<Value>) -> Result<String, String> {
     if directive.is_null() {
         return Err("Malformed request - missing directive".into());
     }
-    let payload_version = &directive["header"]["payloadVersion"].as_i64();
-    if payload_version.unwrap_or(0) != 3 {
-        return Err("Only support payloadVersion == 3".into());
+    let payload_version = &directive["header"]["payloadVersion"].as_str();
+    if payload_version.unwrap_or_default() != "3" {
+        return Err("Only support payloadVersion == \"3\"".into());
     }
 
     let mut scope = &directive["endpoint"]["scope"];
@@ -58,7 +60,7 @@ async fn handler(event: LambdaEvent<Value>) -> Result<String, String> {
     let token = if token.is_none() && tracing::enabled!(Level::DEBUG) {
         env::var("LONG_LIVED_ACCESS_TOKEN").unwrap()
     } else {
-        token.unwrap().into()
+        token.ok_or("Malformed request - missing auth token")?.into()
     };
 
     let disable_ssl_verification = if let Ok(v) = env::var("NOT_VERIFY_SSL") {
@@ -81,9 +83,6 @@ async fn handler(event: LambdaEvent<Value>) -> Result<String, String> {
         .await
         .map_err(|e| format!("An error occurred while awaiting the http response: {}", e))?;
     let response_status = response.status();
-    let response_data = response.text()
-        .await
-        .map_err(|e| format!("Could not extract response data: {}", e))?;
 
     if !response_status.is_success() {
         let val = ResponseData {
@@ -94,14 +93,20 @@ async fn handler(event: LambdaEvent<Value>) -> Result<String, String> {
                         } else {
                             "INTERNAL_ERROR"
                         }).to_owned(),
-                    message: response_data,
+                    message: response.text()
+                        .await
+                        .map_err(|e| format!("Could not extract error response message: {}", e))?,
                 }
             }
         };
-        return Ok(serde_json::to_string(&val)
-            .map_err(|e| format!("Could not serialize ResponseData with error info: {}", e))?);
+        return Ok(serde_json::to_value(&val)
+            .map_err(|e| format!("Could not deseriialize ResponseData with error info: {}", e))?);
     }
 
+    let response_data = response
+        .json::<Value>()
+        .await
+        .map_err(|e| format!("Could not deserialize response data: {}", e))?;
     Ok(response_data)
 }
 
