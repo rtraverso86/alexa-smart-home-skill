@@ -1,8 +1,10 @@
+use anyhow::{Context, Result, anyhow, bail};
 use std::{env, time::Duration};
 use reqwest;
 use lambda_http::{service_fn, Error, lambda_runtime::{self, LambdaEvent}, tracing::{self, Level}};
 use serde::Serialize;
 use serde_json::Value;
+use url::Url;
 
 #[derive(Serialize)]
 struct ResponseData {
@@ -21,23 +23,23 @@ struct PayloadData {
     message: String,
 }
 
-async fn handler(event: LambdaEvent<Value>) -> Result<Value, String> {
+async fn handler(event: LambdaEvent<Value>) -> Result<Value> {
     if tracing::enabled!(Level::TRACE) {
-        let evt = serde_json::to_string_pretty(&event.payload).or(Err("Could not serialize event.payload"))?;
+        let evt = serde_json::to_string_pretty(&event.payload)?;
         tracing::trace!("Event: {}", evt);
     }
 
     let base_url = env::var("BASE_URL")
-        .map_err(|e| format!("{}: please set the BASE_URL environment variable", e))?;
-    let base_url = base_url.trim_end_matches('/');
+        .context("Please set a BASE_URL environment variable")?;
+    let mut base_url = Url::parse(base_url.trim_end_matches('/'))?;
 
     let directive = &event.payload["directive"];
     if directive.is_null() {
-        return Err("Malformed request - missing directive".into());
+        bail!("Malformed request - missing directive");
     }
-    let payload_version = &directive["header"]["payloadVersion"].as_str();
-    if payload_version.unwrap_or_default() != "3" {
-        return Err("Only support payloadVersion == \"3\"".into());
+    let payload_version = directive["header"]["payloadVersion"].as_str().unwrap_or_default();
+    if payload_version != "3" {
+        bail!("Only payloadVersion == \"3\" is supported, got {}", payload_version);
     }
 
     let mut scope = &directive["endpoint"]["scope"];
@@ -48,17 +50,17 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, String> {
         scope = &directive["payload"]["scope"];
     }
     if scope.is_null() {
-        return Err("Malformed request - missing endpoint.scope".into());
+        bail!("Malformed request - missing one between endpoint.scope, payload.grantee, or payload.scope");
     }
     if scope["type"].as_str().unwrap_or_default() != "BearerToken" {
-        return Err("Malformed request - endpoint.scope.type only supports BearerToken".into());
+        bail!("Malformed request - endpoint.scope.type only supports BearerToken");
     }
 
     let token = &scope["token"].as_str();
     let token = if token.is_none() && tracing::enabled!(Level::DEBUG) {
-        env::var("LONG_LIVED_ACCESS_TOKEN").unwrap()
+        env::var("LONG_LIVED_ACCESS_TOKEN").context("No token found in event, please provide a LONG_LIVEDF_ACCESS_TOKEN instead")?
     } else {
-        token.ok_or("Malformed request - missing auth token")?.into()
+        token.ok_or(anyhow!("Malformed request - missing auth token"))?.into()
     };
 
     let disable_ssl_verification = if let Ok(v) = env::var("NOT_VERIFY_SSL") {
@@ -71,15 +73,14 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, String> {
         .connect_timeout(Duration::from_secs(2))
         .read_timeout(Duration::from_secs(10))
         .danger_accept_invalid_certs(disable_ssl_verification)
-        .build()
-        .map_err(|e| format!("Could not build reqwest client: {}", e))?;
-    let response = client.post(format!("{}/api/alexa/smart_home", base_url))
+        .build()?;
+    base_url.set_path("/api/alexa/smart_home");
+    let response = client.post(base_url.as_str())
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&event.payload).or(Err("Could not serialize response body"))?)
+        .json(&event.payload)
         .send()
-        .await
-        .map_err(|e| format!("An error occurred while awaiting the http response: {}", e))?;
+        .await?;
     let response_status = response.status();
 
     if !response_status.is_success() {
@@ -91,21 +92,14 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, String> {
                         } else {
                             "INTERNAL_ERROR"
                         }).to_owned(),
-                    message: response.text()
-                        .await
-                        .map_err(|e| format!("Could not extract error response message: {}", e))?,
+                    message: response.text().await?,
                 }
             }
         };
-        return Ok(serde_json::to_value(&val)
-            .map_err(|e| format!("Could not deseriialize ResponseData with error info: {}", e))?);
+        return Ok(serde_json::to_value(&val)?);
     }
 
-    let response_data = response
-        .json::<Value>()
-        .await
-        .map_err(|e| format!("Could not deserialize response data: {}", e))?;
-    Ok(response_data)
+    Ok(response.json::<Value>().await?)
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -114,4 +108,3 @@ async fn main() -> Result<(), Error> {
 
     lambda_runtime::run(service_fn(handler)).await
 }
-
