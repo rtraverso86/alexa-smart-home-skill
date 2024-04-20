@@ -22,11 +22,9 @@ struct PayloadData {
 }
 
 async fn handler(event: LambdaEvent<Value>) -> Result<Value, String> {
-    if tracing::enabled!(Level::DEBUG) {
-        if tracing::enabled!(Level::TRACE) {
-            let evt = serde_json::to_string_pretty(&event.payload).or(Err("Could not serialize event.payload"))?;
-        }
-        tracing::debug!("Event: {}", evt);
+    if tracing::enabled!(Level::TRACE) {
+        let evt = serde_json::to_string_pretty(&event.payload).or(Err("Could not serialize event.payload"))?;
+        tracing::trace!("Event: {}", evt);
     }
 
     let base_url = env::var("BASE_URL")
@@ -110,7 +108,7 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, String> {
     Ok(response_data)
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Error> {
     tracing::init_default_subscriber();
 
