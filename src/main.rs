@@ -50,7 +50,7 @@ async fn handler(event: LambdaEvent<Value>) -> Result<String, String> {
     if scope.is_null() {
         return Err("Malformed request - missing endpoint.scope".into());
     }
-    if scope["type"].to_string() != "BearerToken" {
+    if scope["type"].as_str().unwrap_or_default() != "BearerToken" {
         return Err("Malformed request - endpoint.scope.type only supports BearerToken".into());
     }
 
