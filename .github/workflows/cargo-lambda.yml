@@ -2,9 +2,20 @@ name: cargo-lambda
 on: [push]
 jobs:
   cargo-lambda-build:
-    runs-on: rust:1.77-bookworm
+    name: Build lambda
+    runs-on: ubuntu-latest
+
+    # Add "id-token" with the intended permissions.
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    container:
+      image: rust:1.77-bookworm
+
     steps:
       - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
       - name: Install Zig toolchain
         uses: korandoru/setup-zig@v1
         with:
