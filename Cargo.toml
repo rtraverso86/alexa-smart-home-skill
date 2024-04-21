@@ -1,11 +1,15 @@
 [package]
 name = "alexa-smart-home-skill"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-authors = ["R. Traverso"]
+authors = ["Riccardo Traverso"]
 description = """
 An AWS Lambda function that provides the same functionalities as the original python script
-described into the Home Assistant guide to Alexa integration.
+described into the Home Assistant guide "Amazon Alexa Smart Home Skill".
+This one is written in Rust though, therefore allocates faster in cold boots and also runs
+somewhat faster.
+
+See also https://www.home-assistant.io/integrations/alexa.smart_home/#add-code-to-the-lambda-function
 """
 license = "MIT"
 
@@ -13,8 +17,8 @@ license = "MIT"
 
 [dependencies]
 anyhow = { version = "1.0" }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "json"] }
 lambda_http = { version = "0.11" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 tokio = { version = "1", default-features = false, features = ["rt", "macros"] }
