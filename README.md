@@ -4,10 +4,17 @@ Rust version of the Python script for the AWS Lambda used in the
 [Amazon Alexa Smart Home Skill](https://www.home-assistant.io/integrations/alexa.smart_home/#add-code-to-the-lambda-function)
 integration guide for Home Assistant.
 
+### Advantages
 It supports the same fetures, despite using a slightly different set of
-environment variables), but being natively compiled in Rust and not requiring
+environment variables, but being natively compiled in Rust and not requiring
 a Python runtime when the Lambda performs a cold start, it is faster
 at both being initialized as well as at runtime.
+
+More specifically, in the few tests I performed (at log level `INFO`):
+
+* Cold starts were about 130ms faster.
+* The lambda at runtime was about 300ms faster on average of a dozen runs for the `Alexa.Discovery` event.
+* The memory footprint was also lower, standing at about 22MB instead of the 49-50MB occupied by the python version.
 
 ## Build
 
